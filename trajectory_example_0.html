@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trayectorias de Drones en Galicia</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+    <style>
+        #map { height: 600px; }
+        #controls { margin: 20px; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="pixelSize">Tamaño del píxel (km):</label>
+        <input type="number" id="pixelSize" value="10" step="1">
+        <label for="numTrajectories">Número de trayectorias:</label>
+        <input type="number" id="numTrajectories" value="20">
+        <label for="pointsPerTrajectory">Puntos por trayectoria:</label>
+        <input type="number" id="pointsPerTrajectory" value="10">
+        <label for="zoomLevel">Nivel de zoom para mostrar trayectorias:</label>
+        <input type="number" id="zoomLevel" value="12" step="1">
+        <button onclick="updateMap()">Actualizar Mapa</button>
+    </div>
+    
+    <div id="map"></div>
+    <script>
+        function generateRandomPoint(bounds) {
+            const [minx, miny, maxx, maxy] = bounds;
+            return [
+                Math.random() * (maxx - minx) + minx,
+                Math.random() * (maxy - miny) + miny
+            ];
+        }
+
+        function generateRandomTrajectory(bounds, numPoints) {
+            const trajectory = [];
+            for (let i = 0; i < numPoints; i++) {
+                trajectory.push(generateRandomPoint(bounds));
+            }
+            return trajectory;
+        }
+
+        function generateGeoJSON(bounds, numTrajectories, pointsPerTrajectory) {
+            const features = [];
+            for (let i = 0; i < numTrajectories; i++) {
+                const trajectory = generateRandomTrajectory(bounds, pointsPerTrajectory);
+                const lineString = {
+                    type: "LineString",
+                    coordinates: trajectory
+                };
+                const feature = {
+                    type: "Feature",
+                    geometry: lineString,
+                    properties: {}
+                };
+                features.push(feature);
+            }
+
+            const featureCollection = {
+                type: "FeatureCollection",
+                features: features
+            };
+
+            return featureCollection;
+        }
+
+        function updateMap() {
+            const pixelSize = parseFloat(document.getElementById('pixelSize').value);
+            const numTrajectories = parseInt(document.getElementById('numTrajectories').value);
+            const pointsPerTrajectory = parseInt(document.getElementById('pointsPerTrajectory').value);
+
+            const bounds = [-9.3, 42, -8, 43];  // Limites de Galicia
+            const data = generateGeoJSON(bounds, numTrajectories, pointsPerTrajectory);
+
+            // Limpiar capas anteriores
+            if (map.hasLayer(geojsonLayer)) {
+                map.removeLayer(geojsonLayer);
+            }
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker) {
+                    layer.remove();
+                }
+            });
+            // Crear una cuadrícula de tamaño especificado por el usuario
+            const bbox = turf.bbox(data);
+            const options = { units: 'kilometers' };
+            const grid = turf.squareGrid(bbox, pixelSize, options);
+
+            console.log('Calculando trayectorias por celda...');
+
+            // Contar las trayectorias que pasan por cada celda de la cuadrícula
+            grid.features.forEach(cell => {
+                let count = 0;
+                data.features.forEach(traj => {
+                    if (turf.booleanCrosses(cell, traj) || turf.booleanContains(cell, traj)){
+                        count += 1;
+                    }
+                });
+                cell.properties.count = count;
+            });
+
+            console.log('Trayectorias calculadas, actualizando mapa...');
+
+            // Crear un GeoJSON layer con la cuadrícula
+            geojsonLayer = L.geoJSON(grid, {
+                style: function(feature) {
+                    const count = feature.properties.count;
+                    const color = count > 5 ? 'red' : count > 2 ? 'orange' : 'green';
+                    return {
+                        color: color,
+                        weight: 1,
+                        fillOpacity: 0.5
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    const count = feature.properties.count;
+                    layer.bindPopup('Trayectorias: ' + count);
+                     // Añadir una etiqueta al centro de cada celda
+                     if (count >= 0) {
+                        const center = turf.centerOfMass(feature).geometry.coordinates;
+                        const label = L.divIcon({
+                            className: 'label',
+                            html: count,
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15]
+                        });
+                        L.marker([center[1], center[0]], { icon: label }).addTo(map);
+                    }
+                }
+            }).addTo(map);
+        }
+
+        // Inicializar el mapa de Leaflet
+      
+    // Inicializar el mapa de Leaflet
+    const latitude = 42.5;
+    const longitude = -8.8;
+    const initial_zoom_level = 9;
+    var map = L.map('map').setView([latitude, longitude], initial_zoom_level);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    var geojsonLayer;
+    var trajectoryLayer;
+
+    // Función para actualizar el mapa
+    function updateMap() {
+        const pixelSize = parseFloat(document.getElementById('pixelSize').value);
+        const numTrajectories = parseInt(document.getElementById('numTrajectories').value);
+        const pointsPerTrajectory = parseInt(document.getElementById('pointsPerTrajectory').value);
+
+        const bounds = [-9.3, 42, -8, 43];  // Limites de Galicia
+        const data = generateGeoJSON(bounds, numTrajectories, pointsPerTrajectory);
+
+        // Limpiar capas anteriores
+        if (map.hasLayer(geojsonLayer)) {
+            map.removeLayer(geojsonLayer);
+        }
+        if (map.hasLayer(trajectoryLayer)) {
+            map.removeLayer(trajectoryLayer);
+        }
+        map.eachLayer((layer) => {
+            if (layer instanceof L.Marker) {
+                layer.remove();
+            }
+        });
+
+        // Crear una cuadrícula de tamaño especificado por el usuario
+        const bbox = turf.bbox(data);
+        const options = { units: 'kilometers' };
+        const grid = turf.squareGrid(bbox, pixelSize, options);
+
+        console.log('Calculando trayectorias por celda...');
+
+        // Contar las trayectorias que pasan por cada celda de la cuadrícula
+        grid.features.forEach(cell => {
+            let count = 0;
+            data.features.forEach(traj => {
+                if (turf.booleanCrosses(cell, traj) || turf.booleanContains(cell, traj)){
+                    count += 1;
+                }
+            });
+            cell.properties.count = count;
+        });
+
+        console.log('Trayectorias calculadas, actualizando mapa...');
+
+        // Crear un GeoJSON layer con la cuadrícula
+        geojsonLayer = L.geoJSON(grid, {
+            style: function(feature) {
+                const count = feature.properties.count;
+                const color = count > 5 ? 'red' : count > 2 ? 'orange' : 'green';
+                return {
+                    color: color,
+                    weight: 1,
+                    fillOpacity: 0.5
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                const count = feature.properties.count;
+                layer.bindPopup('Trayectorias: ' + count);
+                // Añadir una etiqueta al centro de cada celda
+                if (count >= 0) {
+                    const center = turf.centerOfMass(feature).geometry.coordinates;
+                    const label = L.divIcon({
+                        className: 'label',
+                        html: count,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    });
+                    L.marker([center[1], center[0]], { icon: label }).addTo(map);
+                }
+            }
+        }).addTo(map);
+
+        // Crear un GeoJSON layer con las trayectorias
+        trajectoryLayer = L.geoJSON(data, {
+            style: function(feature) {
+                return {
+                    color: 'blue',
+                    weight: 2,
+                    opacity: 1
+                };
+            }
+        });
+
+        // Actualizar visibilidad de capas basado en el nivel de zoom
+        updateLayerVisibility();
+    }
+
+    // Función para actualizar la visibilidad de las capas basado en el nivel de zoom
+    function updateLayerVisibility() {
+        const zoomLevel = parseInt(document.getElementById('zoomLevel').value);
+        const currentZoom = map.getZoom();
+
+        if (currentZoom >= zoomLevel) {
+            if (!map.hasLayer(trajectoryLayer)) {
+                map.addLayer(trajectoryLayer);
+            }
+            if (map.hasLayer(geojsonLayer)) {
+                map.removeLayer(geojsonLayer);
+            }
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Marker) {
+                    layer.remove();
+                }
+            });
+        } else {
+            if (map.hasLayer(trajectoryLayer)) {
+                map.removeLayer(trajectoryLayer);
+            }
+            if (!map.hasLayer(geojsonLayer)) {
+                map.addLayer(geojsonLayer);
+            }
+        }
+    }
+
+    // Añadir evento de cambio de zoom
+    map.on('zoomend', updateLayerVisibility);
+
+    // Inicializar el mapa con valores por defecto
+    updateMap();
+
+
+    </script>
+</body>
+</html>
