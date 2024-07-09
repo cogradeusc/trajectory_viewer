@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mapa de Galicia con Trayectorias</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 600px;
+            width: 60%;
+            float: left;
+        }
+        #info {
+            width: 35%;
+            float: right;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mapa de Galicia con Trayectorias Aleatorias</h1>
+    <div id="map"></div>
+    <div id="info">
+        <h2>Detalles de la Ruta</h2>
+        <div id="route-details"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // Inicializar el mapa centrado en Galicia
+        const map = L.map('map').setView([42.8, -8.1339], 8);
+
+        // Añadir capa de mapa base
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 12,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // Bounding box de Galicia
+        const bbox = {
+            north: 43.7928,
+            south: 41.8000,
+            east: -6.8000,
+            west: -9.3000
+        };
+
+        function randomPosition(bbox) {
+            const lat = bbox.south + Math.random() * (bbox.north - bbox.south);
+            const lon = bbox.west + Math.random() * (bbox.east - bbox.west);
+            return [lat, lon];
+        }
+
+        function generateTrajectory(bbox, numPoints = 3) {
+            const trajectory = [];
+            for (let i = 0; i < numPoints; i++) {
+                trajectory.push(randomPosition(bbox));
+            }
+            return {
+                coordinates: trajectory,
+                properties: {
+                    id: Math.random().toString(36).substring(7),
+                    length: (Math.random() * 10).toFixed(2) + ' km',
+                    name: 'Ruta ' + (Math.floor(Math.random() * 100) + 1),
+                    difficulty: ['Easy', 'Medium', 'Hard'][Math.floor(Math.random() * 3)],
+                    description: 'Una ruta maravillosa que atraviesa hermosos paisajes.'
+                }
+            };
+        }
+
+        const trajectories = [];
+        for (let i = 0; i < 10; i++) {
+            trajectories.push(generateTrajectory(bbox));
+        }
+
+        function countTrajectoriesInGrid(bbox, gridSize, trajectories) {
+            const counts = Array.from({ length: gridSize * gridSize }, () => 0);
+            const latStep = (bbox.north - bbox.south) / gridSize;
+            const lonStep = (bbox.east - bbox.west) / gridSize;
+
+            trajectories.forEach(traj => {
+                traj.coordinates.forEach(coord => {
+                    const row = Math.floor((coord[0] - bbox.south) / latStep);
+                    const col = Math.floor((coord[1] - bbox.west) / lonStep);
+                    const index = row * gridSize + col;
+                    counts[index]++;
+                });
+            });
+
+            return counts;
+        }
+
+        function showGrid(bbox, gridSize, counts) {
+            const latStep = (bbox.north - bbox.south) / gridSize;
+            const lonStep = (bbox.east - bbox.west) / gridSize;
+
+            for (let row = 0; row < gridSize; row++) {
+                for (let col = 0; col < gridSize; col++) {
+                    const southWest = [bbox.south + row * latStep, bbox.west + col * lonStep];
+                    const northEast = [bbox.south + (row + 1) * latStep, bbox.west + (col + 1) * lonStep];
+                    const bounds = [southWest, northEast];
+
+                    const count = counts[row * gridSize + col];
+                    const rectangle = L.rectangle(bounds, { color: "#ff7800", weight: 1 });
+                    rectangle.bindTooltip(count.toString(), { permanent: true, direction: 'center' }).addTo(map);
+                    gridLayers.push(rectangle);
+                }
+            }
+        }
+
+        let polylineLayers = [];
+        let gridLayers = [];
+
+        function updateMap() {
+            const zoom = map.getZoom();
+
+            polylineLayers.forEach(layer => map.removeLayer(layer));
+            gridLayers.forEach(layer => map.removeLayer(layer));
+            polylineLayers = [];
+            gridLayers = [];
+
+            if (zoom >= 8) {
+                trajectories.forEach(trajectory => {
+                    const polyline = L.polyline(trajectory.coordinates, { color: 'blue' }).addTo(map);
+                    polylineLayers.push(polyline);
+
+                    polyline.on('click', function() {
+                        const properties = trajectory.properties;
+                        const detailsContent = `
+                            <h4>${properties.name}</h4>
+                            <p><strong>ID:</strong> ${trajectory.properties.id}</p>
+                            <p><strong>Length:</strong> ${properties.length}</p>
+                            <p><strong>Difficulty:</strong> ${properties.difficulty}</p>
+                            <p>${properties.description}</p>
+                        `;
+                        document.getElementById('route-details').innerHTML = detailsContent;
+                    });
+                });
+            } else if(zoom == 7){
+                const gridSize = 4;
+                const counts = countTrajectoriesInGrid(bbox, gridSize, trajectories);
+                showGrid(bbox, gridSize, counts);
+            }
+            else if (zoom == 6) {                
+                const gridSize = 2;
+                const counts = countTrajectoriesInGrid(bbox, gridSize, trajectories);
+                showGrid(bbox, gridSize, counts);
+            } else if (zoom == 5 || zoom == 4){                
+                const gridSize = 1;
+                const counts = countTrajectoriesInGrid(bbox, gridSize, trajectories);
+                showGrid(bbox, gridSize, counts);
+            }
+           
+        }
+        map.on('zoomend', updateMap);
+        updateMap();
+    </script>
+</body>
+</html>
