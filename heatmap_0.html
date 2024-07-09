@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Leaflet.heat demo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
+    <script
+      src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <style>
+      #map {
+        width: 800px;
+        height: 600px;
+      }     
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <!-- https://github.com/Leaflet/Leaflet.heat -->
+    <script src="https://raw.githubusercontent.com/cogradeusc/trajectory_viewer/main/leaflet-heat.js"></script>
+    <script>
+      let map = L.map("map").setView([42.82109, -8.2193], 7);
+
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            { attribution: '&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors', }
+        ).addTo(map);
+
+        let puntosGalicia = [];
+
+        function generarPuntoAleatorio() {
+            let minLat = 42;
+            let maxLat = 43;
+            let minLon = -9;
+            let maxLon = -7.8;
+
+            let latitud = Math.random() * (maxLat - minLat) + minLat;
+            let longitud = Math.random() * (maxLon - minLon) + minLon;
+
+            return [latitud, longitud];
+        }
+
+        for (let i = 0; i < 1000; i++) {
+            puntosGalicia.push(generarPuntoAleatorio());
+        }
+
+        let heat = L.heatLayer(puntosGalicia).addTo(map);    
+        let draw = true;
+
+        map.on({
+            movestart: function () { draw = false; },
+            moveend:   function () { draw = true; },
+            mousemove: function (e) {
+                if (draw) {
+                    heat.addLatLng(e.latlng);
+                }
+            }
+        })
+    </script>
+  </body>
+</html>
